@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="zh-HK" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HKIA Flight Operations Board | 香港國際機場航班動態</title>
+    
+    <!-- PWA & Mobile Web App Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#090d16">
+    <meta name="description" content="Hong Kong International Airport Live Operations & Ramp Management Terminal">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        hkia: {
+                            navy: '#060B14',
+                            surface: '#0F172A',
+                            card: '#1E293B',
+                            border: '#334155',
+                            accent: '#3B82F6',
+                            gold: '#D97706',
+                            cargo: '#A855F7',
+                            success: '#10B981',
+                            danger: '#EF4444'
+                        }
+                    },
+                    fontFamily: {
+                        mono: ['JetBrains Mono', 'Consolas', 'Menlo', 'monospace'],
+                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <style>
+        /* Modern Glassmorphism & High-Density Aviation Scrollbar */
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        
+        .light .glass-panel {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+        }
+
+        .bay-highlight {
+            animation: pulse-ring 1.8s infinite;
+            background-color: #2563eb !important;
+            color: #ffffff !important;
+            box-shadow: 0 0 12px rgba(37, 99, 235, 0.8);
+        }
+
+        @keyframes pulse-ring {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.06); }
+            100% { transform: scale(1); }
+        }
+
+        /* Prevent unwanted text highlight during rapid tapping */
+        .no-select {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 dark:bg-slate-950 text-slate-100 dark:text-slate-100 light:bg-slate-100 light:text-slate-900 font-sans antialiased min-h-screen flex flex-col selection:bg-blue-600 selection:text-white transition-colors duration-200">
+
+    <!-- Chek Lap Kok Rain Warning Banner -->
+    <div id="weatherAlertBanner" class="hidden bg-amber-500/15 border-b border-amber-500/30 text-amber-300 dark:text-amber-300 light:text-amber-800 px-4 py-2 text-xs md:text-sm flex items-center justify-between z-50">
+        <div class="flex items-center space-x-2.5 max-w-7xl mx-auto w-full">
+            <i class="fa-solid fa-cloud-showers-heavy text-amber-400 animate-bounce text-sm"></i>
+            <span class="flex-1">
+                <strong>赤鱲角降雨/雷暴預警 (Rain Warning):</strong> 未來 3 小時累積降雨概率 
+                <span id="rainProbVal" class="font-mono font-bold text-amber-400">65%</span> (&ge;50%)。停機坪注意滑倒與避雷 measure。
+            </span>
+            <button onclick="closeWeatherAlert()" class="text-amber-400 hover:text-amber-200 p-1">
+                <i class="fa-solid fa-xmark text-sm"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Navigation Bar -->
+    <header class="glass-panel border-b border-slate-800 dark:border-slate-800 light:border-slate-300 sticky top-0 z-40 shadow-2xl no-select">
+        <div class="max-w-[1800px] mx-auto px-3 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3">
+            
+            <!-- HKIA Title & Status Tag -->
+            <div class="flex items-center space-x-3 cursor-pointer" ondblclick="scrollToTop()">
+                <div class="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400 shadow-inner">
+                    <i class="fa-solid fa-plane-departure text-xl"></i>
+                </div>
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <h1 class="font-bold text-base sm:text-lg tracking-wide text-white dark:text-white light:text-slate-900">
+                            HKIA Ops Terminal
+                        </h1>
+                        <span class="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> LIVE
+                        </span>
+                    </div>
+                    <p class="text-[11px] text-slate-400 dark:text-slate-400 light:text-slate-600">香港國際機場 · 機坪地勤資訊系統 v5.5</p>
+                </div>
+            </div>
+
+            <!-- Quick Operational Metrics Summary -->
+            <div class="hidden xl:flex items-center space-x-6 text-xs bg-slate-900/80 dark:bg-slate-900/80 light:bg-slate-200/80 px-4 py-1.5 rounded-xl border border-slate-800 dark:border-slate-800 light:border-slate-300">
+                <div class="flex items-center space-x-2">
+                    <span class="text-slate-400">ARR 抵港:</span>
+                    <span id="metricArr" class="font-mono font-bold text-emerald-400">0</span>
+                </div>
+                <div class="w-px h-3.5 bg-slate-700"></div>
+                <div class="flex items-center space-x-2">
+                    <span class="text-slate-400">DEP 離港:</span>
+                    <span id="metricDep" class="font-mono font-bold text-blue-400">0</span>
+                </div>
+                <div class="w-px h-3.5 bg-slate-700"></div>
+                <div class="flex items-center space-x-2">
+                    <span class="text-slate-400">CARGO 貨機:</span>
+                    <span id="metricCargo" class="font-mono font-bold text-purple-400">0</span>
+                </div>
+                <div class="w-px h-3.5 bg-slate-700"></div>
+                <div class="flex items-center space-x-2">
+                    <span class="text-slate-400">延誤 Delay:</span>
+                    <span id="metricDelayed" class="font-mono font-bold text-rose-400">0</span>
+                </div>
+            </div>
+
+            <!-- Operational Clocks & Actions -->
+            <div class="flex items-center space-x-2.5">
+                <!-- Dual Clock Toggle -->
+                <div class="bg-slate-900 dark:bg-slate-900 light:bg-slate-200 px-3 py-1 rounded-lg border border-slate-800 dark:border-slate-800 light:border-slate-300 text-right cursor-pointer hover:border-slate-600 transition" onclick="toggleClockPrimary()" title="點擊切換主時區 (HKT / UTC)">
+                    <div id="primaryClock" class="text-xs font-mono font-bold text-slate-100 dark:text-slate-100 light:text-slate-900">--:--:-- HKT</div>
+                    <div id="secondaryClock" class="text-[10px] font-mono text-slate-400 dark:text-slate-400 light:text-slate-600">--:--:-- UTC</div>
+                </div>
+
+                <!-- Dark / Light Theme Switcher -->
+                <button onclick="toggleTheme()" class="p-2 rounded-lg bg-slate-900 dark:bg-slate-900 light:bg-slate-200 hover:bg-slate-800 text-slate-300 dark:text-slate-300 light:text-slate-700 border border-slate-800 dark:border-slate-800 light:border-slate-300 transition" title="Theme Toggle">
+                    <i id="themeIcon" class="fa-solid fa-moon"></i>
+                </button>
+
+                <!-- Sync Refresh Button -->
+                <button onclick="manualRefresh()" id="refreshBtn" class="p-2 rounded-lg bg-slate-900 dark:bg-slate-900 light:bg-slate-200 hover:bg-slate-800 text-slate-300 dark:text-slate-300 light:text-slate-700 border border-slate-800 dark:border-slate-800 light:border-slate-300 transition" title="重新整理 Refresh">
+                    <i class="fa-solid fa-rotate"></i>
+                </button>
+
+                <!-- Export Ramp Log CSV -->
+                <button onclick="exportCSV()" class="px-3 py-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 font-medium text-xs transition flex items-center space-x-1.5" title="下載 CSV Log">
+                    <i class="fa-solid fa-file-csv text-sm"></i>
+                    <span class="hidden sm:inline">匯出 Log</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Operational Sub-Bar: Category Tabs & Alert Search Command -->
+    <section class="bg-slate-900/60 dark:bg-slate-900/60 light:bg-white border-b border-slate-800 dark:border-slate-800 light:border-slate-200 py-2 px-3 sm:px-6">
+        <div class="max-w-[1800px] mx-auto flex flex-wrap items-center justify-between gap-3">
+            
+            <!-- Filter Tabs -->
+            <div class="flex items-center bg-slate-950 dark:bg-slate-950 light:bg-slate-100 p-1 rounded-xl border border-slate-800 dark:border-slate-800 light:border-slate-300 text-xs">
+                <button onclick="setCategory('ALL')" id="tab-ALL" class="category-btn px-3.5 py-1.5 rounded-lg font-semibold transition bg-blue-600 text-white shadow">全板 ALL</button>
+                <button onclick="setCategory('ARR')" id="tab-ARR" class="category-btn px-3.5 py-1.5 rounded-lg font-medium text-slate-400 hover:text-slate-200 transition">到港 ARR</button>
+                <button onclick="setCategory('DEP')" id="tab-DEP" class="category-btn px-3.5 py-1.5 rounded-lg font-medium text-slate-400 hover:text-slate-200 transition">離港 DEP</button>
+                <button onclick="setCategory('CARGO')" id="tab-CARGO" class="category-btn px-3.5 py-1.5 rounded-lg font-medium text-slate-400 hover:text-slate-200 transition flex items-center space-x-1">
+                    <i class="fa-solid fa-box text-purple-400"></i>
+                    <span>貨機 CARGO</span>
+                </button>
+            </div>
+
+            <!-- Intelligent Search & Command Bar -->
+            <div class="flex-1 max-w-xl flex items-center space-x-2">
+                <div class="relative w-full">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+                    <input type="text" id="searchInput" oninput="handleSearch()" placeholder="搜尋航班 / 泊位 / 機型 (例: 輸入 'W63+' 或 'CX123+' 啟用提醒)..." class="w-full bg-slate-950 dark:bg-slate-950 light:bg-white border border-slate-800 dark:border-slate-800 light:border-slate-300 focus:border-blue-500 rounded-xl pl-9 pr-8 py-1.5 text-xs text-slate-200 dark:text-slate-200 light:text-slate-900 placeholder-slate-500 outline-none transition font-mono">
+                    <button id="clearSearchBtn" onclick="clearSearch()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
+                        <i class="fa-solid fa-circle-xmark text-xs"></i>
+                    </button>
+                </div>
+                <button onclick="processSubscribeSyntax()" class="px-3.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 text-xs rounded-xl font-semibold whitespace-nowrap transition flex items-center space-x-1.5">
+                    <i class="fa-solid fa-bell text-amber-400"></i>
+                    <span>訂閱提醒</span>
+                </button>
+            </div>
+
+            <!-- Zone Quick Select -->
+            <div class="flex items-center space-x-2 text-xs">
+                <span class="text-slate-400 hidden lg:inline">泊位分區:</span>
+                <select id="zoneSelect" onchange="filterByZoneSelect()" class="bg-slate-950 dark:bg-slate-950 light:bg-white border border-slate-800 dark:border-slate-800 light:border-slate-300 text-slate-200 dark:text-slate-200 light:text-slate-900 rounded-xl px-3 py-1.5 outline-none focus:border-blue-500 text-xs">
+                    <option value="ALL">所有停機坪分區 (All Zones)</option>
+                    <option value="NORTH">North Concourse (Bay 1-36)</option>
+                    <option value="SOUTH">South Concourse (Bay 40-70)</option>
+                    <option value="MIDFIELD">Midfield Concourse (Bay 201-230)</option>
+                    <option value="WEST_CARGO">West Cargo Apron (W60 - W69)</option>
+                    <option value="SOUTH_CARGO">South Cargo Apron (L410+)</option>
+                </select>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- Active Subscriptions Pill Strip -->
+    <div id="subscriptionBar" class="hidden bg-slate-900/40 border-b border-slate-800/80 px-4 py-1.5">
+        <div class="max-w-[1800px] mx-auto flex items-center space-x-2 text-xs">
+            <span class="text-slate-500 text-[11px] font-semibold uppercase tracking-wider">現已訂閱 Alert Listeners:</span>
+            <div id="subscriptionList" class="flex flex-wrap gap-1.5"></div>
+        </div>
+    </div>
+
+    <!-- Main Flight Table Board -->
+    <main class="flex-1 max-w-[1800px] w-full mx-auto p-3 sm:p-5 flex flex-col">
+        
+        <!-- Instructional Quick Helper -->
+        <div class="mb-3 flex flex-wrap items-center justify-between text-[11px] text-slate-400 bg-slate-900/40 dark:bg-slate-900/40 light:bg-slate-200/60 px-3 py-1.5 rounded-xl border border-slate-800/60 dark:border-slate-800/60 light:border-slate-300 gap-2">
+            <div class="flex items-center space-x-4">
+                <span><i class="fa-solid fa-hand-pointer text-blue-400 mr-1"></i> <strong>單擊泊位:</strong> 高亮同區域泊位</span>
+                <span><i class="fa-solid fa-arrow-pointer text-amber-400 mr-1"></i> <strong>雙擊 / 長按航班:</strong> 編輯機坪備註或變更泊位</span>
+                <span><i class="fa-solid fa-bolt text-emerald-400 mr-1"></i> <strong>雙擊頁尾/頂欄:</strong> 快速滾動返回頂部</span>
+            </div>
+            <div id="highlightZonePill" class="hidden text-blue-400 font-mono font-bold flex items-center space-x-1">
+                <i class="fa-solid fa-crosshairs"></i>
+                <span>已鎖定高亮分區: <span id="highlightZoneName"></span></span>
+                <button onclick="clearHighlightZone()" class="ml-1 text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+        </div>
+
+        <!-- Table Responsive Outer Container -->
+        <div class="bg-slate-900 dark:bg-slate-900 light:bg-white border border-slate-800 dark:border-slate-800 light:border-slate-300 rounded-2xl shadow-2xl overflow-hidden flex-1 flex flex-col">
+            <div class="overflow-x-auto flex-1 no-select" id="tableScrollContainer">
+                <table class="w-full text-left border-collapse min-w-[1050px]">
+                    <thead>
+                        <tr class="bg-slate-950/90 dark:bg-slate-950/90 light:bg-slate-100 text-slate-400 dark:text-slate-400 light:text-slate-600 text-[11px] font-mono uppercase tracking-wider border-b border-slate-800 dark:border-slate-800 light:border-slate-300 sticky top-0 z-20 backdrop-blur-md">
+                            <th class="py-3.5 px-4">類型 Type</th>
+                            <th class="py-3.5 px-4">航班 Flight</th>
+                            <th class="py-3.5 px-4">航空公司 / 地勤 Handling</th>
+                            <th class="py-3.5 px-4">機型 A/C Reg</th>
+                            <th class="py-3.5 px-4">航線 Route</th>
+                            <th class="py-3.5 px-4">預定 STA/STD</th>
+                            <th class="py-3.5 px-4">預估 ETA/ETD</th>
+                            <th class="py-3.5 px-4">狀態 Status</th>
+                            <th class="py-3.5 px-4 text-center">泊位 Bay</th>
+                            <th class="py-3.5 px-4">機坪備註 Ground Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody id="flightTableBody" class="divide-y divide-slate-800/60 dark:divide-slate-800/60 light:divide-slate-200 font-mono text-xs">
+                        <!-- Dynamic Flight Rows -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Operational Edit Modal (Notes & Bay Override) -->
+    <div id="editModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-slate-900 dark:bg-slate-900 light:bg-white border border-slate-700 dark:border-slate-700 light:border-slate-300 rounded-2xl shadow-2xl max-w-md w-full p-6 text-slate-100 dark:text-slate-100 light:text-slate-900 relative">
+            <button onclick="closeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-100">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+            
+            <div class="flex items-center space-x-3 mb-4">
+                <div class="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400 font-bold text-lg">
+                    <i class="fa-solid fa-pen-to-square"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold text-base" id="modalFlightTitle">CX123 Operational Override</h3>
+                    <p class="text-xs text-slate-400" id="modalFlightSub">B77F · Route: HKG-ORD</p>
+                </div>
+            </div>
+
+            <form id="editForm" onsubmit="saveModalChanges(event)" class="space-y-4">
+                <input type="hidden" id="modalFlightId">
+                
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">手動變更泊位 (Bay Override)</label>
+                    <input type="text" id="modalBayInput" class="w-full bg-slate-950 dark:bg-slate-950 light:bg-slate-100 border border-slate-700 dark:border-slate-700 light:border-slate-300 focus:border-blue-500 rounded-xl px-3.5 py-2 text-sm text-slate-100 dark:text-slate-100 light:text-slate-900 outline-none uppercase font-mono" placeholder="例: W63, 24, L412">
+                    <p class="text-[10px] text-slate-500 mt-1">變更將即時同步至本機 Display，並儲存在 local Storage。</p>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">機坪特別備註 (Ground Ops Ramp Notes)</label>
+                    <textarea id="modalNotesInput" rows="3" class="w-full bg-slate-950 dark:bg-slate-950 light:bg-slate-100 border border-slate-700 dark:border-slate-700 light:border-slate-300 focus:border-blue-500 rounded-xl px-3.5 py-2 text-sm text-slate-100 dark:text-slate-100 light:text-slate-900 outline-none font-sans" placeholder="新增地勤備註 (例如：危險品貨物、冷鏈藥品 2-8°C、VIP 專車登機)..."></textarea>
+                </div>
+
+                <div class="flex items-center justify-end space-x-2.5 pt-3 border-t border-slate-800 dark:border-slate-800 light:border-slate-200">
+                    <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-800 dark:bg-slate-800 light:bg-slate-200 hover:bg-slate-700 rounded-xl text-xs font-medium text-slate-300 dark:text-slate-300 light:text-slate-700 transition">取消 Cancel</button>
+                    <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs font-semibold text-white shadow-lg transition">儲存 Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast Notification Overlay -->
+    <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+    <!-- Application Script -->
+    <script>
+        // Initial Dataset (Realistic HKIA Flight Schedule)
+        const mockFlights = [
+            { id: 'FL-101', type: 'CARGO', flightNo: 'LD208', airline: 'Air Hong Kong', handling: 'HAS', acType: 'A330-300F', reg: 'B-LDF', route: 'HKG - NRT', sta_std: '17:40', eta_etd: '17:40', status: 'ON TIME', bay: 'W63', zone: 'WEST_CARGO', notes: 'Pallet loading priority 1' },
+            { id: 'FL-102', type: 'ARR', flightNo: 'CX841', airline: 'Cathay Pacific', handling: 'CX', acType: 'A350-1000', reg: 'B-LXB', route: 'JFK - HKG', sta_std: '17:15', eta_etd: '17:30', status: 'LANDED', bay: '24', zone: 'NORTH', notes: 'Baggage Belt 12 assigned' },
+            { id: 'FL-103', type: 'CARGO', flightNo: 'PO214', airline: 'Polar Air Cargo', handling: 'JASL', acType: 'B747-8F', reg: 'N856GT', route: 'CVG - HKG', sta_std: '17:55', eta_etd: '18:25', status: 'DELAYED', bay: 'W65', zone: 'WEST_CARGO', notes: 'DG Class 9 Onboard' },
+            { id: 'FL-104', type: 'DEP', flightNo: 'UO688', airline: 'HK Express', handling: 'HAS', acType: 'A321neo', reg: 'B-KJA', route: 'HKG - TPE', sta_std: '18:00', eta_etd: '18:00', status: 'GATE OPEN', bay: '203', zone: 'MIDFIELD', notes: 'Gate 203 boarding' },
+            { id: 'FL-105', type: 'CARGO', flightNo: 'LH8405', airline: 'Lufthansa Cargo', handling: 'CPSL', acType: 'B77F', reg: 'D-ALFA', route: 'FRA - HKG', sta_std: '18:20', eta_etd: '18:20', status: 'ON TIME', bay: 'L412', zone: 'SOUTH_CARGO', notes: 'Temperature control 2-8C' },
+            { id: 'FL-106', type: 'ARR', flightNo: 'EK380', airline: 'Emirates', handling: 'JASL', acType: 'A380-800', reg: 'A6-EEO', route: 'DXB - HKG', sta_std: '18:35', eta_etd: '18:35', status: 'ON TIME', bay: '62', zone: 'SOUTH', notes: 'Double bridge required' },
+            { id: 'FL-107', type: 'DEP', flightNo: 'CX101', airline: 'Cathay Pacific', handling: 'CX', acType: 'B777-300ER', reg: 'B-HNK', route: 'HKG - SYD', sta_std: '19:00', eta_etd: '19:05', status: 'BOARDING', bay: '31', zone: 'NORTH', notes: 'Late connections from CX841' },
+            { id: 'FL-108', type: 'CARGO', flightNo: 'RH312', airline: 'Hong Kong Air Cargo', handling: 'HAS', acType: 'A330-200F', reg: 'B-LNW', route: 'HKG - BKK', sta_std: '19:15', eta_etd: '19:15', status: 'ON TIME', bay: 'W64', zone: 'WEST_CARGO', notes: '' },
+            { id: 'FL-109', type: 'ARR', flightNo: 'HB341', airline: 'Greater Bay Airlines', handling: 'HAS', acType: 'B737-800', reg: 'B-KJB', route: 'KIX - HKG', sta_std: '19:40', eta_etd: '20:10', status: 'DELAYED', bay: '211', zone: 'MIDFIELD', notes: 'Air traffic control slot delay' },
+            { id: 'FL-110', type: 'DEP', flightNo: 'SQ893', airline: 'Singapore Airlines', handling: 'JASL', acType: 'B787-10', reg: '9V-SCB', route: 'HKG - SIN', sta_std: '20:00', eta_etd: '20:00', status: 'ON TIME', bay: '45', zone: 'SOUTH', notes: '' },
+            { id: 'FL-111', type: 'CARGO', flightNo: '5X011', airline: 'UPS Airlines', handling: 'UPS', acType: 'B747-400F', reg: 'N572UP', route: 'HKG - ANC', sta_std: '20:30', eta_etd: '20:30', status: 'ON TIME', bay: 'W68', zone: 'WEST_CARGO', notes: 'Heavy lift pallet' },
+            { id: 'FL-112', type: 'ARR', flightNo: 'CI919', airline: 'China Airlines', handling: 'JASL', acType: 'A350-900', reg: 'B-18901', route: 'TPE - HKG', sta_std: '20:45', eta_etd: '20:45', status: 'ON TIME', bay: '28', zone: 'NORTH', notes: '' }
+        ];
+
+        // Global Application State
+        let flights = [...mockFlights];
+        let currentCategory = 'ALL';
+        let searchQuery = '';
+        let zoneFilter = 'ALL';
+        let highlightedZone = null;
+        let subscriptions = new Set(['W63', 'CX123']);
+        let primaryClockIsHKT = true;
+        let rainProbability = 65;
+
+        // Initialize App on DOM Load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadLocalOverrides();
+            renderSubscriptionPillBar();
+            renderBoard();
+            startOperationalClock();
+            checkWeatherAlerts();
+
+            // Auto-refresh simulation loop (15 minutes simulation interval)
+            setInterval(() => {
+                simulateLiveUpdates();
+            }, 30000);
+        });
+
+        // Local Storage Persistence
+        function loadLocalOverrides() {
+            const saved = localStorage.getItem('hkia_flight_overrides_v5');
+            if (saved) {
+                try {
+                    const overrides = JSON.parse(saved);
+                    flights.forEach(f => {
+                        if (overrides[f.id]) {
+                            if (overrides[f.id].bay) f.bay = overrides[f.id].bay;
+                            if (overrides[f.id].notes !== undefined) f.notes = overrides[f.id].notes;
+                        }
+                    });
+                } catch(e) {
+                    console.error('Failed reading overrides', e);
+                }
+            }
+        }
+
+        function saveLocalOverride(id, bay, notes) {
+            let overrides = {};
+            const saved = localStorage.getItem('hkia_flight_overrides_v5');
+            if (saved) {
+                try { overrides = JSON.parse(saved); } catch(e) {}
+            }
+            overrides[id] = { bay, notes };
+            localStorage.setItem('hkia_flight_overrides_v5', JSON.stringify(overrides));
+        }
+
+        // Main Board Renderer
+        function renderBoard() {
+            const tbody = document.getElementById('flightTableBody');
+            tbody.innerHTML = '';
+
+            const filtered = flights.filter(f => {
+                // Category Tab Filter
+                if (currentCategory !== 'ALL') {
+                    if (currentCategory === 'CARGO' && f.type !== 'CARGO') return false;
+                    if (currentCategory !== 'CARGO' && f.type !== currentCategory) return false;
+                }
+
+                // Dropdown Zone Filter
+                if (zoneFilter !== 'ALL' && f.zone !== zoneFilter) return false;
+
+                // Search Query Filter
+                if (searchQuery.trim() !== '') {
+                    const q = searchQuery.toLowerCase().replace('+', '');
+                    const mFlight = f.flightNo.toLowerCase().includes(q);
+                    const mBay = f.bay.toLowerCase().includes(q);
+                    const mAirline = f.airline.toLowerCase().includes(q);
+                    const mRoute = f.route.toLowerCase().includes(q);
+                    const mType = f.acType.toLowerCase().includes(q);
+                    const mReg = f.reg.toLowerCase().includes(q);
+                    if (!mFlight && !mBay && !mAirline && !mRoute && !mType && !mReg) return false;
+                }
+
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="10" class="py-12 text-center text-slate-500">
+                            <i class="fa-solid fa-plane-slash text-3xl mb-2"></i>
+                            <p>沒有符合條件的航班數據 No matching flights found.</p>
+                        </td>
+                    </tr>
+                `;
+                updateMetrics();
+                return;
+            }
+
+            filtered.forEach(flight => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-800/40 dark:hover:bg-slate-800/40 light:hover:bg-slate-100 transition border-b border-slate-800/50 dark:border-slate-800/50 light:border-slate-200 cursor-pointer';
+                tr.dataset.id = flight.id;
+
+                // Interaction: Double Click or Long Press to Edit
+                let pressTimer = null;
+                tr.addEventListener('touchstart', () => {
+                    pressTimer = setTimeout(() => openEditModal(flight), 600);
+                });
+                tr.addEventListener('touchend', () => clearTimeout(pressTimer));
+                tr.addEventListener('ondblclick', () => openEditModal(flight));
+                tr.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    openEditModal(flight);
+                });
+
+                // Type Badge
+                let typeBadge = '';
+                if (flight.type === 'ARR') {
+                    typeBadge = `<span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold px-2 py-0.5 rounded-md">ARR 到港</span>`;
+                } else if (flight.type === 'DEP') {
+                    typeBadge = `<span class="bg-blue-500/10 text-blue-400 border border-blue-500/30 text-[10px] font-bold px-2 py-0.5 rounded-md">DEP 離港</span>`;
+                } else {
+                    typeBadge = `<span class="bg-purple-500/10 text-purple-300 border border-purple-500/30 text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center w-max space-x-1"><i class="fa-solid fa-box text-[9px]"></i><span>CARGO</span></span>`;
+                }
+
+                // Status Badge
+                let statusBadge = '';
+                switch(flight.status) {
+                    case 'ON TIME':
+                        statusBadge = `<span class="text-emerald-400 font-semibold"><i class="fa-solid fa-circle-check text-[10px] mr-1"></i>准時 On Time</span>`;
+                        break;
+                    case 'DELAYED':
+                        statusBadge = `<span class="text-rose-400 font-bold animate-pulse"><i class="fa-solid fa-clock text-[10px] mr-1"></i>延誤 Delayed</span>`;
+                        break;
+                    case 'LANDED':
+                        statusBadge = `<span class="text-sky-400 font-semibold"><i class="fa-solid fa-plane-arrival text-[10px] mr-1"></i>已降落 Landed</span>`;
+                        break;
+                    case 'GATE OPEN':
+                    case 'BOARDING':
+                        statusBadge = `<span class="text-amber-400 font-semibold"><i class="fa-solid fa-door-open text-[10px] mr-1"></i>${flight.status}</span>`;
+                        break;
+                    default:
+                        statusBadge = `<span class="text-slate-400">${flight.status}</span>`;
+                }
+
+                // Highlighted Bay Class
+                const isZoneHighlighted = (highlightedZone && flight.zone === highlightedZone);
+                const bayClass = isZoneHighlighted ? 'bay-highlight' : 'bg-slate-800 dark:bg-slate-800 light:bg-slate-200 text-blue-300 dark:text-blue-300 light:text-blue-700 border-slate-700 dark:border-slate-700 light:border-slate-300';
+
+                tr.innerHTML = `
+                    <td class="py-3.5 px-4">${typeBadge}</td>
+                    <td class="py-3.5 px-4 font-bold text-white dark:text-white light:text-slate-900 tracking-wide flex items-center space-x-1.5">
+                        <span>${flight.flightNo}</span>
+                        ${subscriptions.has(flight.flightNo) ? '<i class="fa-solid fa-bell text-amber-400 text-[10px]" title="Alert Listener Active"></i>' : ''}
+                    </td>
+                    <td class="py-3.5 px-4">
+                        <div class="text-slate-200 dark:text-slate-200 light:text-slate-800 font-medium">${flight.airline}</div>
+                        <div class="text-[10px] text-slate-500">${flight.handling} handling</div>
+                    </td>
+                    <td class="py-3.5 px-4">
+                        <div class="text-slate-300 dark:text-slate-300 light:text-slate-700">${flight.acType}</div>
+                        <div class="text-[10px] text-slate-500">${flight.reg}</div>
+                    </td>
+                    <td class="py-3.5 px-4 font-semibold text-slate-300 dark:text-slate-300 light:text-slate-700">${flight.route}</td>
+                    <td class="py-3.5 px-4 text-slate-400">${flight.sta_std}</td>
+                    <td class="py-3.5 px-4 ${flight.status === 'DELAYED' ? 'text-rose-400 font-bold' : 'text-slate-300 dark:text-slate-300 light:text-slate-700'}">${flight.eta_etd}</td>
+                    <td class="py-3.5 px-4">${statusBadge}</td>
+                    <td class="py-3.5 px-4 text-center">
+                        <button onclick="toggleHighlightZone('${flight.zone}', event)" class="${bayClass} inline-block border px-2.5 py-1 rounded-lg font-mono font-bold text-xs cursor-pointer transition shadow-sm" title="點擊高亮同區泊位">
+                            ${flight.bay}
+                        </button>
+                    </td>
+                    <td class="py-3.5 px-4 text-xs text-slate-400 max-w-xs truncate">
+                        ${flight.notes ? `<span class="bg-slate-800/80 dark:bg-slate-800/80 light:bg-slate-200 text-slate-200 dark:text-slate-200 light:text-slate-800 px-2 py-0.5 rounded border border-slate-700 dark:border-slate-700 light:border-slate-300 text-[11px]"><i class="fa-solid fa-sticky-note text-amber-400 mr-1"></i>${flight.notes}</span>` : '<span class="text-slate-600">-</span>'}
+                    </td>
+                `;
+
+                tbody.appendChild(tr);
+            });
+
+            updateMetrics();
+        }
+
+        // Metrics Updater
+        function updateMetrics() {
+            document.getElementById('metricArr').textContent = flights.filter(f => f.type === 'ARR').length;
+            document.getElementById('metricDep').textContent = flights.filter(f => f.type === 'DEP').length;
+            document.getElementById('metricCargo').textContent = flights.filter(f => f.type === 'CARGO').length;
+            document.getElementById('metricDelayed').textContent = flights.filter(f => f.status === 'DELAYED').length;
+        }
+
+        // Category Tab Switching
+        function setCategory(cat) {
+            currentCategory = cat;
+            document.querySelectorAll('.category-btn').forEach(btn => {
+                btn.className = 'category-btn px-3.5 py-1.5 rounded-lg font-medium text-slate-400 hover:text-slate-200 transition';
+            });
+            const selected = document.getElementById(`tab-${cat}`);
+            if (selected) {
+                selected.className = 'category-btn px-3.5 py-1.5 rounded-lg font-semibold transition bg-blue-600 text-white shadow';
+            }
+            renderBoard();
+        }
+
+        // Search Logic
+        function handleSearch() {
+            const val = document.getElementById('searchInput').value;
+            searchQuery = val;
+            const clearBtn = document.getElementById('clearSearchBtn');
+            if (val.length > 0) {
+                clearBtn.classList.remove('hidden');
+            } else {
+                clearBtn.classList.add('hidden');
+            }
+            renderBoard();
+        }
+
+        function clearSearch() {
+            document.getElementById('searchInput').value = '';
+            searchQuery = '';
+            document.getElementById('clearSearchBtn').classList.add('hidden');
+            renderBoard();
+        }
+
+        // Zone Highlight Actions
+        function toggleHighlightZone(zone, event) {
+            if (event) event.stopPropagation();
+            if (highlightedZone === zone) {
+                highlightedZone = null;
+                document.getElementById('highlightZonePill').classList.add('hidden');
+            } else {
+                highlightedZone = zone;
+                document.getElementById('highlightZoneName').textContent = zone;
+                document.getElementById('highlightZonePill').classList.remove('hidden');
+                showToast(`已高亮分區 [${zone}] 之所有泊位`, 'info');
+            }
+            renderBoard();
+        }
+
+        function clearHighlightZone() {
+            highlightedZone = null;
+            document.getElementById('highlightZonePill').classList.add('hidden');
+            renderBoard();
+        }
+
+        function filterByZoneSelect() {
+            zoneFilter = document.getElementById('zoneSelect').value;
+            renderBoard();
+        }
+
+        // Subscription Syntax Handler ("W63+" or "CX123+")
+        function processSubscribeSyntax() {
+            const val = document.getElementById('searchInput').value.trim().toUpperCase();
+            if (!val) {
+                showToast('請在搜尋欄輸入泊位 (例如 W63+) 或航班號 (例如 CX123+)', 'warning');
+                return;
+            }
+
+            const cleanItem = val.replace('+', '');
+            if (cleanItem) {
+                subscriptions.add(cleanItem);
+                renderSubscriptionPillBar();
+                showToast(`已成功訂閱 [${cleanItem}] 泊位/航班異動提醒`, 'success');
+                clearSearch();
+            }
+        }
+
+        function removeSubscription(item) {
+            subscriptions.delete(item);
+            renderSubscriptionPillBar();
+            showToast(`已取消訂閱 [${item}]`, 'info');
+        }
+
+        function renderSubscriptionPillBar() {
+            const bar = document.getElementById('subscriptionBar');
+            const list = document.getElementById('subscriptionList');
+            list.innerHTML = '';
+
+            if (subscriptions.size === 0) {
+                bar.classList.add('hidden');
+                return;
+            }
+
+            bar.classList.remove('hidden');
+            subscriptions.forEach(sub => {
+                const pill = document.createElement('span');
+                pill.className = 'inline-flex items-center space-x-1 bg-amber-500/10 border border-amber-500/30 text-amber-300 px-2 py-0.5 rounded text-[11px] font-mono';
+                pill.innerHTML = `
+                    <span>+${sub}</span>
+                    <button onclick="removeSubscription('${sub}')" class="hover:text-white ml-1"><i class="fa-solid fa-xmark"></i></button>
+                `;
+                list.appendChild(pill);
+            });
+        }
+
+        // Operational Dual Clocks
+        function startOperationalClock() {
+            function tick() {
+                const now = new Date();
+                const hkt = now.toLocaleTimeString('en-GB', { timeZone: 'Asia/Hong_Kong', hour12: false });
+                const utc = now.toLocaleTimeString('en-GB', { timeZone: 'UTC', hour12: false });
+
+                const primary = document.getElementById('primaryClock');
+                const secondary = document.getElementById('secondaryClock');
+
+                if (primaryClockIsHKT) {
+                    primary.textContent = `${hkt} HKT`;
+                    secondary.textContent = `${utc} UTC`;
+                } else {
+                    primary.textContent = `${utc} UTC`;
+                    secondary.textContent = `${hkt} HKT`;
+                }
+            }
+            tick();
+            setInterval(tick, 1000);
+        }
+
+        function toggleClockPrimary() {
+            primaryClockIsHKT = !primaryClockIsHKT;
+            showToast(`主時區已切換為 ${primaryClockIsHKT ? 'HKT (UTC+8)' : 'UTC'}`, 'info');
+        }
+
+        // Weather Alert
+        function checkWeatherAlerts() {
+            if (rainProbability >= 50) {
+                document.getElementById('rainProbVal').textContent = `${rainProbability}%`;
+                document.getElementById('weatherAlertBanner').classList.remove('hidden');
+            }
+        }
+
+        function closeWeatherAlert() {
+            document.getElementById('weatherAlertBanner').classList.add('hidden');
+        }
+
+        // Dark / Light Theme Toggle
+        function toggleTheme() {
+            const html = document.documentElement;
+            const icon = document.getElementById('themeIcon');
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                html.classList.add('light');
+                icon.className = 'fa-solid fa-sun text-amber-400';
+                showToast('已切換至日照高對比模式 (Light Mode)', 'info');
+            } else {
+                html.classList.remove('light');
+                html.classList.add('dark');
+                icon.className = 'fa-solid fa-moon text-slate-300';
+                showToast('已切換至夜間深色模式 (Dark Mode)', 'info');
+            }
+        }
+
+        // Edit Modal Operations
+        function openEditModal(flight) {
+            document.getElementById('modalFlightId').value = flight.id;
+            document.getElementById('modalFlightTitle').textContent = `${flight.flightNo} (${flight.airline})`;
+            document.getElementById('modalFlightSub').textContent = `${flight.acType} (${flight.reg}) · Route: ${flight.route}`;
+            document.getElementById('modalBayInput').value = flight.bay;
+            document.getElementById('modalNotesInput').value = flight.notes || '';
+            document.getElementById('editModal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('editModal').classList.add('hidden');
+        }
+
+        function saveModalChanges(event) {
+            event.preventDefault();
+            const id = document.getElementById('modalFlightId').value;
+            const newBay = document.getElementById('modalBayInput').value.trim().toUpperCase();
+            const newNotes = document.getElementById('modalNotesInput').value.trim();
+
+            const target = flights.find(f => f.id === id);
+            if (target) {
+                target.bay = newBay;
+                target.notes = newNotes;
+
+                saveLocalOverride(id, newBay, newNotes);
+
+                if (subscriptions.has(newBay) || subscriptions.has(target.flightNo)) {
+                    showToast(`🚨 訂閱異動: 航班 ${target.flightNo} 泊位更新至 [${newBay}]`, 'warning');
+                } else {
+                    showToast(`航班 ${target.flightNo} 機坪資訊更新成功`, 'success');
+                }
+            }
+
+            closeModal();
+            renderBoard();
+        }
+
+        // Manual Data Sync
+        function manualRefresh() {
+            const btn = document.getElementById('refreshBtn');
+            btn.classList.add('animate-spin');
+            setTimeout(() => {
+                btn.classList.remove('animate-spin');
+                renderBoard();
+                showToast('已手動同步最新的停機坪狀態與泊位資訊', 'success');
+            }, 600);
+        }
+
+        // Simulate Dynamic Server Push Updates
+        function simulateLiveUpdates() {
+            const randIdx = Math.floor(Math.random() * flights.length);
+            const target = flights[randIdx];
+
+            if (target && target.status === 'ON TIME' && Math.random() > 0.5) {
+                target.status = 'DELAYED';
+                target.eta_etd = '18:50';
+                renderBoard();
+
+                if (subscriptions.has(target.flightNo) || subscriptions.has(target.bay)) {
+                    showToast(`🚨 訂閱警告: 航班 ${target.flightNo} (${target.bay} 泊位) 狀態更新為 [延誤 DELAYED]`, 'warning');
+                }
+            }
+        }
+
+        // Export Ramp Logs to CSV
+        function exportCSV() {
+            let csv = "data:text/csv;charset=utf-8,";
+            csv += "Type,FlightNo,Airline,Handling,ACType,Registration,Route,STA_STD,ETA_ETD,Status,Bay,GroundNotes\n";
+
+            flights.forEach(f => {
+                const row = [
+                    f.type,
+                    f.flightNo,
+                    `"${f.airline}"`,
+                    f.handling,
+                    f.acType,
+                    f.reg,
+                    `"${f.route}"`,
+                    f.sta_std,
+                    f.eta_etd,
+                    f.status,
+                    f.bay,
+                    `"${f.notes || ''}"`
+                ].join(",");
+                csv += row + "\n";
+            });
+
+            const encoded = encodeURI(csv);
+            const a = document.createElement("a");
+            a.setAttribute("href", encoded);
+            a.setAttribute("download", `HKIA_Ramp_Log_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            showToast('已匯出機坪記錄 CSV 檔案', 'success');
+        }
+
+        function scrollToTop() {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            showToast('已返回頂部', 'info');
+        }
+
+        // Notification Toast Engine
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+
+            let style = 'bg-slate-900 dark:bg-slate-900 light:bg-white border-slate-700 text-slate-100 dark:text-slate-100 light:text-slate-900';
+            let icon = '<i class="fa-solid fa-circle-info text-blue-400"></i>';
+
+            if (type === 'success') {
+                style = 'bg-slate-900 border-emerald-500/50 text-emerald-300';
+                icon = '<i class="fa-solid fa-circle-check text-emerald-400"></i>';
+            } else if (type === 'warning') {
+                style = 'bg-amber-950/90 border-amber-500/50 text-amber-200';
+                icon = '<i class="fa-solid fa-triangle-exclamation text-amber-400"></i>';
+            }
+
+            toast.className = `flex items-center space-x-2 border rounded-xl shadow-2xl px-4 py-3 text-xs font-mono transition transform translate-y-3 opacity-0 pointer-events-auto ${style}`;
+            toast.innerHTML = `${icon}<span>${message}</span>`;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-3', 'opacity-0');
+            }, 50);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 3800);
+        }
+    </script>
+</body>
+</html>
